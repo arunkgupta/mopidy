@@ -1,22 +1,23 @@
-from __future__ import unicode_literals
+from __future__ import absolute_import, unicode_literals
 
 import logging
 import re
 import socket
 
+from mopidy import compat
 from mopidy.config import validators
-from mopidy.utils import path
+from mopidy.internal import log, path
 
 
 def decode(value):
-    if isinstance(value, unicode):
+    if isinstance(value, compat.text_type):
         return value
     # TODO: only unescape \n \t and \\?
     return value.decode('string-escape').decode('utf-8')
 
 
 def encode(value):
-    if not isinstance(value, unicode):
+    if not isinstance(value, compat.text_type):
         return value
     for char in ('\\', '\n', '\t'):  # TODO: more escapes?
         value = value.replace(char, char.encode('unicode-escape'))
@@ -24,8 +25,9 @@ def encode(value):
 
 
 class ExpandedPath(bytes):
-    def __new__(self, original, expanded):
-        return super(ExpandedPath, self).__new__(self, expanded)
+
+    def __new__(cls, original, expanded):
+        return super(ExpandedPath, cls).__new__(cls, expanded)
 
     def __init__(self, original, expanded):
         self.original = original
@@ -36,6 +38,7 @@ class DeprecatedValue(object):
 
 
 class ConfigValue(object):
+
     """Represents a config key's value and how to handle it.
 
     Normally you will only be interacting with sub-classes for config values
@@ -64,6 +67,7 @@ class ConfigValue(object):
 
 
 class Deprecated(ConfigValue):
+
     """Deprecated value
 
     Used for ignoring old config values that are no longer in use, but should
@@ -78,10 +82,12 @@ class Deprecated(ConfigValue):
 
 
 class String(ConfigValue):
+
     """String value.
 
     Is decoded as utf-8 and \\n \\t escapes should work and be preserved.
     """
+
     def __init__(self, optional=False, choices=None):
         self._required = not optional
         self._choices = choices
@@ -101,6 +107,7 @@ class String(ConfigValue):
 
 
 class Secret(String):
+
     """Secret string value.
 
     Is decoded as utf-8 and \\n \\t escapes should work and be preserved.
@@ -108,6 +115,7 @@ class Secret(String):
     Should be used for passwords, auth tokens etc. Will mask value when being
     displayed.
     """
+
     def __init__(self, optional=False, choices=None):
         self._required = not optional
         self._choices = None  # Choices doesn't make sense for secrets
@@ -119,6 +127,7 @@ class Secret(String):
 
 
 class Integer(ConfigValue):
+
     """Integer value."""
 
     def __init__(
@@ -140,6 +149,7 @@ class Integer(ConfigValue):
 
 
 class Boolean(ConfigValue):
+
     """Boolean value.
 
     Accepts ``1``, ``yes``, ``true``, and ``on`` with any casing as
@@ -151,7 +161,13 @@ class Boolean(ConfigValue):
     true_values = ('1', 'yes', 'true', 'on')
     false_values = ('0', 'no', 'false', 'off')
 
+    def __init__(self, optional=False):
+        self._required = not optional
+
     def deserialize(self, value):
+        validators.validate_required(value, self._required)
+        if not value:
+            return None
         if value.lower() in self.true_values:
             return True
         elif value.lower() in self.false_values:
@@ -166,11 +182,13 @@ class Boolean(ConfigValue):
 
 
 class List(ConfigValue):
+
     """List value.
 
     Supports elements split by commas or newlines. Newlines take presedence and
     empty list items will be filtered out.
     """
+
     def __init__(self, optional=False):
         self._required = not optional
 
@@ -190,11 +208,24 @@ class List(ConfigValue):
         return b'\n  ' + b'\n  '.join(encode(v) for v in value if v)
 
 
+class LogColor(ConfigValue):
+
+    def deserialize(self, value):
+        validators.validate_choice(value.lower(), log.COLORS)
+        return value.lower()
+
+    def serialize(self, value, display=False):
+        if value.lower() in log.COLORS:
+            return value.lower()
+        return b''
+
+
 class LogLevel(ConfigValue):
+
     """Log level value.
 
-    Expects one of ``critical``, ``error``, ``warning``, ``info``, ``debug``
-    with any casing.
+    Expects one of ``critical``, ``error``, ``warning``, ``info``, ``debug``,
+    or ``all``, with any casing.
     """
     levels = {
         b'critical': logging.CRITICAL,
@@ -202,6 +233,7 @@ class LogLevel(ConfigValue):
         b'warning': logging.WARNING,
         b'info': logging.INFO,
         b'debug': logging.DEBUG,
+        b'all': logging.NOTSET,
     }
 
     def deserialize(self, value):
@@ -216,6 +248,7 @@ class LogLevel(ConfigValue):
 
 
 class Hostname(ConfigValue):
+
     """Network hostname value."""
 
     def __init__(self, optional=False):
@@ -233,18 +266,21 @@ class Hostname(ConfigValue):
 
 
 class Port(Integer):
+
     """Network port value.
 
     Expects integer in the range 0-65535, zero tells the kernel to simply
     allocate a port for us.
     """
     # TODO: consider probing if port is free or not?
+
     def __init__(self, choices=None, optional=False):
         super(Port, self).__init__(
             minimum=0, maximum=2 ** 16 - 1, choices=choices, optional=optional)
 
 
 class Path(ConfigValue):
+
     """File system path
 
     The following expansions of the path will be done:
@@ -259,6 +295,7 @@ class Path(ConfigValue):
 
     - ``$XDG_MUSIC_DIR`` according to the XDG spec
     """
+
     def __init__(self, optional=False):
         self._required = not optional
 
@@ -272,7 +309,7 @@ class Path(ConfigValue):
         return ExpandedPath(value, expanded)
 
     def serialize(self, value, display=False):
-        if isinstance(value, unicode):
+        if isinstance(value, compat.text_type):
             raise ValueError('paths should always be bytes')
         if isinstance(value, ExpandedPath):
             return value.original

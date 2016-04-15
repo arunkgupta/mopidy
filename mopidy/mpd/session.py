@@ -1,14 +1,15 @@
-from __future__ import unicode_literals
+from __future__ import absolute_import, unicode_literals
 
 import logging
 
+from mopidy.internal import formatting, network
 from mopidy.mpd import dispatcher, protocol
-from mopidy.utils import formatting, network
 
 logger = logging.getLogger(__name__)
 
 
 class MpdSession(network.LineProtocol):
+
     """
     The MPD client session. Keeps track of a single client session. Any
     requests from the client is passed on to the MPD request dispatcher.
@@ -18,10 +19,10 @@ class MpdSession(network.LineProtocol):
     encoding = protocol.ENCODING
     delimiter = r'\r?\n'
 
-    def __init__(self, connection, config=None, core=None):
+    def __init__(self, connection, config=None, core=None, uri_map=None):
         super(MpdSession, self).__init__(connection)
         self.dispatcher = dispatcher.MpdDispatcher(
-            session=self, config=config, core=core)
+            session=self, config=config, core=core, uri_map=uri_map)
 
     def on_start(self):
         logger.info('New MPD connection from [%s]:%s', self.host, self.port)
@@ -40,7 +41,7 @@ class MpdSession(network.LineProtocol):
 
         self.send_lines(response)
 
-    def on_idle(self, subsystem):
+    def on_event(self, subsystem):
         self.dispatcher.handle_idle(subsystem)
 
     def decode(self, line):

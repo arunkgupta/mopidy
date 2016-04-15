@@ -43,18 +43,19 @@ Options
 
 .. cmdoption:: --verbose, -v
 
-    Show more output. Repeat up to 3 times for even more.
+    Show more output. Repeat up to four times for even more.
 
 .. cmdoption:: --save-debug-log
 
     Save debug log to the file specified in the :confval:`logging/debug_file`
     config value, typically ``./mopidy.log``.
 
-.. cmdoption:: --config <file>
+.. cmdoption:: --config <file|directory>
 
-    Specify config file to use. To use multiple config files, separate them
-    with a colon. The later files override the earlier ones if there's a
-    conflict.
+    Specify config files and directories to use. To use multiple config files
+    or directories, separate them with a colon. The later files override the
+    earlier ones if there's a conflict. When specifying a directory, all files
+    ending in .conf in the directory are used.
 
 .. cmdoption:: --option <option>, -o <option>
 
@@ -110,7 +111,7 @@ To start the music server, run::
 
     mopidy
 
-To start the server with an additional config file than can override configs
+To start the server with an additional config file, that can override configs
 set in the default config files, run::
 
     mopidy --config ./my-config.conf

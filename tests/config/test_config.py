@@ -1,19 +1,32 @@
 # encoding: utf-8
 
-from __future__ import unicode_literals
+from __future__ import absolute_import, unicode_literals
 
 import unittest
 
 import mock
 
-from mopidy import config
+from mopidy import config, ext
 
 from tests import path_to_data_dir
 
 
 class LoadConfigTest(unittest.TestCase):
+
     def test_load_nothing(self):
         self.assertEqual({}, config._load([], [], []))
+
+    def test_load_missing_file(self):
+        file0 = path_to_data_dir('file0.conf')
+        result = config._load([file0], [], [])
+        self.assertEqual({}, result)
+
+    @mock.patch('os.access')
+    def test_load_nonreadable_file(self, access_mock):
+        access_mock.return_value = False
+        file1 = path_to_data_dir('file1.conf')
+        result = config._load([file1], [], [])
+        self.assertEqual({}, result)
 
     def test_load_single_default(self):
         default = b'[foo]\nbar = baz'
@@ -60,6 +73,18 @@ class LoadConfigTest(unittest.TestCase):
         result = config._load([file1, file2], [], [])
         self.assertEqual(expected, result)
 
+    def test_load_directory(self):
+        directory = path_to_data_dir('conf1.d')
+        expected = {'foo': {'bar': 'baz'}, 'foo2': {'bar': 'baz'}}
+        result = config._load([directory], [], [])
+        self.assertEqual(expected, result)
+
+    def test_load_directory_only_conf_files(self):
+        directory = path_to_data_dir('conf2.d')
+        expected = {'foo': {'bar': 'baz'}}
+        result = config._load([directory], [], [])
+        self.assertEqual(expected, result)
+
     def test_load_file_with_utf8(self):
         expected = {'foo': {'bar': 'æøå'.encode('utf-8')}}
         result = config._load([path_to_data_dir('file3.conf')], [], [])
@@ -72,7 +97,8 @@ class LoadConfigTest(unittest.TestCase):
 
 
 class ValidateTest(unittest.TestCase):
-    def setUp(self):
+
+    def setUp(self):  # noqa: N802
         self.schema = config.ConfigSchema('foo')
         self.schema['bar'] = config.ConfigValue()
 
@@ -266,3 +292,23 @@ class PostProcessorTest(unittest.TestCase):
     def test_conversion(self):
         result = config._postprocess(PROCESSED_CONFIG)
         self.assertEqual(result, INPUT_CONFIG)
+
+
+def test_format_initial():
+    extension = ext.Extension()
+    extension.ext_name = 'foo'
+    extension.get_default_config = lambda: None
+    extensions_data = [
+        ext.ExtensionData(
+            extension=extension,
+            entry_point=None,
+            config_schema=None,
+            config_defaults=None,
+            command=None,
+        ),
+    ]
+
+    result = config.format_initial(extensions_data)
+
+    assert '# For further information' in result
+    assert '[foo]\n' in result

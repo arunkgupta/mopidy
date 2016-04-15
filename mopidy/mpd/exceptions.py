@@ -1,9 +1,10 @@
-from __future__ import unicode_literals
+from __future__ import absolute_import, unicode_literals
 
 from mopidy.exceptions import MopidyException
 
 
 class MpdAckError(MopidyException):
+
     """See fields on this class for available MPD error codes"""
 
     ACK_ERROR_NOT_LIST = 1
@@ -59,6 +60,7 @@ class MpdUnknownError(MpdAckError):
 
 
 class MpdUnknownCommand(MpdUnknownError):
+
     def __init__(self, *args, **kwargs):
         super(MpdUnknownCommand, self).__init__(*args, **kwargs)
         assert self.command is not None, 'command must be given explicitly'
@@ -67,6 +69,7 @@ class MpdUnknownCommand(MpdUnknownError):
 
 
 class MpdNoCommand(MpdUnknownCommand):
+
     def __init__(self, *args, **kwargs):
         kwargs['command'] = ''
         super(MpdNoCommand, self).__init__(*args, **kwargs)
@@ -77,8 +80,21 @@ class MpdNoExistError(MpdAckError):
     error_code = MpdAckError.ACK_ERROR_NO_EXIST
 
 
+class MpdExistError(MpdAckError):
+    error_code = MpdAckError.ACK_ERROR_EXIST
+
+
 class MpdSystemError(MpdAckError):
     error_code = MpdAckError.ACK_ERROR_SYSTEM
+
+
+class MpdInvalidPlaylistName(MpdAckError):
+    error_code = MpdAckError.ACK_ERROR_ARG
+
+    def __init__(self, *args, **kwargs):
+        super(MpdInvalidPlaylistName, self).__init__(*args, **kwargs)
+        self.message = ('playlist name is invalid: playlist names may not '
+                        'contain slashes, newlines or carriage returns')
 
 
 class MpdNotImplemented(MpdAckError):
@@ -87,3 +103,34 @@ class MpdNotImplemented(MpdAckError):
     def __init__(self, *args, **kwargs):
         super(MpdNotImplemented, self).__init__(*args, **kwargs)
         self.message = 'Not implemented'
+
+
+class MpdInvalidTrackForPlaylist(MpdAckError):
+    # NOTE: This is a custom error for Mopidy that does not exist in MPD.
+    error_code = 0
+
+    def __init__(self, playlist_scheme, track_scheme, *args, **kwargs):
+        super(MpdInvalidTrackForPlaylist, self).__init__(*args, **kwargs)
+        self.message = (
+            'Playlist with scheme "%s" can\'t store track scheme "%s"' %
+            (playlist_scheme, track_scheme))
+
+
+class MpdFailedToSavePlaylist(MpdAckError):
+    # NOTE: This is a custom error for Mopidy that does not exist in MPD.
+    error_code = 0
+
+    def __init__(self, backend_scheme, *args, **kwargs):
+        super(MpdFailedToSavePlaylist, self).__init__(*args, **kwargs)
+        self.message = 'Backend with scheme "%s" failed to save playlist' % (
+            backend_scheme)
+
+
+class MpdDisabled(MpdAckError):
+    # NOTE: This is a custom error for Mopidy that does not exist in MPD.
+    error_code = 0
+
+    def __init__(self, *args, **kwargs):
+        super(MpdDisabled, self).__init__(*args, **kwargs)
+        assert self.command is not None, 'command must be given explicitly'
+        self.message = '"%s" has been disabled in the server' % self.command

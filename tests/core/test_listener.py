@@ -1,4 +1,4 @@
-from __future__ import unicode_literals
+from __future__ import absolute_import, unicode_literals
 
 import unittest
 
@@ -9,7 +9,8 @@ from mopidy.models import Playlist, TlTrack
 
 
 class CoreListenerTest(unittest.TestCase):
-    def setUp(self):
+
+    def setUp(self):  # noqa: N802
         self.listener = CoreListener()
 
     def test_on_event_forwards_to_specific_handler(self):
@@ -46,6 +47,9 @@ class CoreListenerTest(unittest.TestCase):
     def test_listener_has_default_impl_for_playlist_changed(self):
         self.listener.playlist_changed(Playlist())
 
+    def test_listener_has_default_impl_for_playlist_deleted(self):
+        self.listener.playlist_deleted(Playlist())
+
     def test_listener_has_default_impl_for_options_changed(self):
         self.listener.options_changed()
 
@@ -57,3 +61,6 @@ class CoreListenerTest(unittest.TestCase):
 
     def test_listener_has_default_impl_for_seeked(self):
         self.listener.seeked(0)
+
+    def test_listener_has_default_impl_for_stream_title_changed(self):
+        self.listener.stream_title_changed('foobar')

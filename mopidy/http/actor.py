@@ -1,4 +1,4 @@
-from __future__ import unicode_literals
+from __future__ import absolute_import, unicode_literals
 
 import json
 import logging
@@ -7,13 +7,16 @@ import threading
 
 import pykka
 
+import tornado.httpserver
 import tornado.ioloop
+import tornado.netutil
 import tornado.web
 import tornado.websocket
 
-from mopidy import models, zeroconf
+from mopidy import exceptions, models, zeroconf
 from mopidy.core import CoreListener
 from mopidy.http import handlers
+from mopidy.internal import encoding, formatting, network
 
 
 logger = logging.getLogger(__name__)
@@ -25,80 +28,119 @@ class HttpFrontend(pykka.ThreadingActor, CoreListener):
 
     def __init__(self, config, core):
         super(HttpFrontend, self).__init__()
-        self.config = config
-        self.core = core
 
-        self.hostname = config['http']['hostname']
+        self.hostname = network.format_hostname(config['http']['hostname'])
         self.port = config['http']['port']
+        tornado_hostname = config['http']['hostname']
+        if tornado_hostname == '::':
+            tornado_hostname = None
+
+        try:
+            logger.debug('Starting HTTP server')
+            sockets = tornado.netutil.bind_sockets(self.port, tornado_hostname)
+            self.server = HttpServer(
+                config=config, core=core, sockets=sockets,
+                apps=self.apps, statics=self.statics)
+        except IOError as error:
+            raise exceptions.FrontendError(
+                'HTTP server startup failed: %s' %
+                encoding.locale_decode(error))
+
         self.zeroconf_name = config['http']['zeroconf']
-        self.zeroconf_service = None
-        self.app = None
+        self.zeroconf_http = None
+        self.zeroconf_mopidy_http = None
 
     def on_start(self):
-        threading.Thread(target=self._startup).start()
-        self._publish_zeroconf()
+        logger.info(
+            'HTTP server running at [%s]:%s', self.hostname, self.port)
+        self.server.start()
+
+        if self.zeroconf_name:
+            self.zeroconf_http = zeroconf.Zeroconf(
+                name=self.zeroconf_name,
+                stype='_http._tcp',
+                port=self.port)
+            self.zeroconf_mopidy_http = zeroconf.Zeroconf(
+                name=self.zeroconf_name,
+                stype='_mopidy-http._tcp',
+                port=self.port)
+            self.zeroconf_http.publish()
+            self.zeroconf_mopidy_http.publish()
 
     def on_stop(self):
-        self._unpublish_zeroconf()
-        tornado.ioloop.IOLoop.instance().add_callback(self._shutdown)
+        if self.zeroconf_http:
+            self.zeroconf_http.unpublish()
+        if self.zeroconf_mopidy_http:
+            self.zeroconf_mopidy_http.unpublish()
 
-    def _startup(self):
-        logger.debug('Starting HTTP server')
-        self.app = tornado.web.Application(self._get_request_handlers())
-        self.app.listen(self.port,
-                        self.hostname if self.hostname != '::' else None)
-        logger.info(
-            'HTTP server running at http://%s:%s', self.hostname, self.port)
-        tornado.ioloop.IOLoop.instance().start()
-
-    def _shutdown(self):
-        logger.debug('Stopping HTTP server')
-        tornado.ioloop.IOLoop.instance().stop()
-        logger.debug('Stopped HTTP server')
+        self.server.stop()
 
     def on_event(self, name, **data):
-        event = data
-        event['event'] = name
-        message = json.dumps(event, cls=models.ModelJSONEncoder)
-        handlers.WebSocketHandler.broadcast(message)
+        on_event(name, **data)
+
+
+def on_event(name, **data):
+    event = data
+    event['event'] = name
+    message = json.dumps(event, cls=models.ModelJSONEncoder)
+    handlers.WebSocketHandler.broadcast(message)
+
+
+class HttpServer(threading.Thread):
+    name = 'HttpServer'
+
+    def __init__(self, config, core, sockets, apps, statics):
+        super(HttpServer, self).__init__()
+
+        self.config = config
+        self.core = core
+        self.sockets = sockets
+        self.apps = apps
+        self.statics = statics
+
+        self.app = None
+        self.server = None
+
+    def run(self):
+        self.app = tornado.web.Application(self._get_request_handlers())
+        self.server = tornado.httpserver.HTTPServer(self.app)
+        self.server.add_sockets(self.sockets)
+
+        tornado.ioloop.IOLoop.instance().start()
+
+        logger.debug('Stopped HTTP server')
+
+    def stop(self):
+        logger.debug('Stopping HTTP server')
+        tornado.ioloop.IOLoop.instance().add_callback(
+            tornado.ioloop.IOLoop.instance().stop)
 
     def _get_request_handlers(self):
         request_handlers = []
-
         request_handlers.extend(self._get_app_request_handlers())
         request_handlers.extend(self._get_static_request_handlers())
-
-        # Either default Mopidy or user defined path to files
-        static_dir = self.config['http']['static_dir']
-        if static_dir and not os.path.exists(static_dir):
-            logger.warning(
-                'Configured http/static_dir %s does not exist. '
-                'Falling back to default HTTP handler.', static_dir)
-            static_dir = None
-        if static_dir:
-            request_handlers.append((r'/(.*)', handlers.StaticFileHandler, {
-                'path': self.config['http']['static_dir'],
-                'default_filename': 'index.html',
-            }))
-        else:
-            request_handlers.append((r'/', tornado.web.RedirectHandler, {
-                'url': '/mopidy/',
-                'permanent': False,
-            }))
+        request_handlers.extend(self._get_mopidy_request_handlers())
 
         logger.debug(
             'HTTP routes from extensions: %s',
-            list((l[0], l[1]) for l in request_handlers))
+            formatting.indent('\n'.join(
+                '%r: %r' % (r[0], r[1]) for r in request_handlers)))
+
         return request_handlers
 
     def _get_app_request_handlers(self):
         result = []
         for app in self.apps:
+            try:
+                request_handlers = app['factory'](self.config, self.core)
+            except Exception:
+                logger.exception('Loading %s failed.', app['name'])
+                continue
+
             result.append((
                 r'/%s' % app['name'],
                 handlers.AddSlashHandler
             ))
-            request_handlers = app['factory'](self.config, self.core)
             for handler in request_handlers:
                 handler = list(handler)
                 handler[0] = '/%s%s' % (app['name'], handler[0])
@@ -124,35 +166,24 @@ class HttpFrontend(pykka.ThreadingActor, CoreListener):
             logger.debug('Loaded static HTTP extension: %s', static['name'])
         return result
 
-    def _publish_zeroconf(self):
-        if not self.zeroconf_name:
-            return
+    def _get_mopidy_request_handlers(self):
+        # Either default Mopidy or user defined path to files
 
-        self.zeroconf_http_service = zeroconf.Zeroconf(
-            stype='_http._tcp', name=self.zeroconf_name,
-            host=self.hostname, port=self.port)
+        static_dir = self.config['http']['static_dir']
 
-        if self.zeroconf_http_service.publish():
-            logger.debug(
-                'Registered HTTP with Zeroconf as "%s"',
-                self.zeroconf_http_service.name)
+        if static_dir and not os.path.exists(static_dir):
+            logger.warning(
+                'Configured http/static_dir %s does not exist. '
+                'Falling back to default HTTP handler.', static_dir)
+            static_dir = None
+
+        if static_dir:
+            return [(r'/(.*)', handlers.StaticFileHandler, {
+                'path': self.config['http']['static_dir'],
+                'default_filename': 'index.html',
+            })]
         else:
-            logger.debug('Registering HTTP with Zeroconf failed.')
-
-        self.zeroconf_mopidy_http_service = zeroconf.Zeroconf(
-            stype='_mopidy-http._tcp', name=self.zeroconf_name,
-            host=self.hostname, port=self.port)
-
-        if self.zeroconf_mopidy_http_service.publish():
-            logger.debug(
-                'Registered Mopidy-HTTP with Zeroconf as "%s"',
-                self.zeroconf_mopidy_http_service.name)
-        else:
-            logger.debug('Registering Mopidy-HTTP with Zeroconf failed.')
-
-    def _unpublish_zeroconf(self):
-        if self.zeroconf_http_service:
-            self.zeroconf_http_service.unpublish()
-
-        if self.zeroconf_mopidy_http_service:
-            self.zeroconf_mopidy_http_service.unpublish()
+            return [(r'/', tornado.web.RedirectHandler, {
+                'url': '/mopidy/',
+                'permanent': False,
+            })]

@@ -1,4 +1,4 @@
-from __future__ import unicode_literals
+from __future__ import absolute_import, unicode_literals
 
 import unittest
 
@@ -7,11 +7,12 @@ import mock
 import pykka
 
 from mopidy.core import Core
-from mopidy.utils import versioning
+from mopidy.internal import versioning
 
 
 class CoreActorTest(unittest.TestCase):
-    def setUp(self):
+
+    def setUp(self):  # noqa: N802
         self.backend1 = mock.Mock()
         self.backend1.uri_schemes.get.return_value = ['dummy1']
         self.backend1.actor_ref.actor_class.__name__ = b'B1'
@@ -20,9 +21,9 @@ class CoreActorTest(unittest.TestCase):
         self.backend2.uri_schemes.get.return_value = ['dummy2']
         self.backend2.actor_ref.actor_class.__name__ = b'B2'
 
-        self.core = Core(audio=None, backends=[self.backend1, self.backend2])
+        self.core = Core(mixer=None, backends=[self.backend1, self.backend2])
 
-    def tearDown(self):
+    def tearDown(self):  # noqa: N802
         pykka.ActorRegistry.stop_all()
 
     def test_uri_schemes_has_uris_from_all_backends(self):
@@ -36,8 +37,9 @@ class CoreActorTest(unittest.TestCase):
 
         self.assertRaisesRegexp(
             AssertionError,
-            'Cannot add URI scheme dummy1 for B2, it is already handled by B1',
-            Core, audio=None, backends=[self.backend1, self.backend2])
+            'Cannot add URI scheme "dummy1" for B2, '
+            'it is already handled by B1',
+            Core, mixer=None, backends=[self.backend1, self.backend2])
 
     def test_version(self):
         self.assertEqual(self.core.version, versioning.get_version())

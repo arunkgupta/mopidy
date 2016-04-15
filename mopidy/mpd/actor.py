@@ -1,28 +1,49 @@
-from __future__ import unicode_literals
+from __future__ import absolute_import, unicode_literals
 
 import logging
-import sys
 
 import pykka
 
-from mopidy import zeroconf
+from mopidy import exceptions, listener, zeroconf
 from mopidy.core import CoreListener
-from mopidy.mpd import session
-from mopidy.utils import encoding, network, process
+from mopidy.internal import encoding, network, process
+from mopidy.mpd import session, uri_mapper
 
 logger = logging.getLogger(__name__)
 
+_CORE_EVENTS_TO_IDLE_SUBSYSTEMS = {
+    'track_playback_paused': None,
+    'track_playback_resumed': None,
+    'track_playback_started': None,
+    'track_playback_ended': None,
+    'playback_state_changed': 'player',
+    'tracklist_changed': 'playlist',
+    'playlists_loaded': 'stored_playlist',
+    'playlist_changed': 'stored_playlist',
+    'playlist_deleted': 'stored_playlist',
+    'options_changed': 'options',
+    'volume_changed': 'mixer',
+    'mute_changed': 'output',
+    'seeked': 'player',
+    'stream_title_changed': 'playlist',
+}
+
 
 class MpdFrontend(pykka.ThreadingActor, CoreListener):
+
     def __init__(self, config, core):
         super(MpdFrontend, self).__init__()
 
-        hostname = network.format_hostname(config['mpd']['hostname'])
-        self.hostname = hostname
+        self.hostname = network.format_hostname(config['mpd']['hostname'])
         self.port = config['mpd']['port']
+        self.uri_map = uri_mapper.MpdUriMapper(core)
+
         self.zeroconf_name = config['mpd']['zeroconf']
         self.zeroconf_service = None
 
+        self._setup_server(config, core)
+
+    def _setup_server(self, config, core):
         try:
             network.Server(
                 self.hostname, self.port,
@@ -30,29 +51,24 @@ class MpdFrontend(pykka.ThreadingActor, CoreListener):
                 protocol_kwargs={
                     'config': config,
                     'core': core,
+                    'uri_map': self.uri_map,
                 },
                 max_connections=config['mpd']['max_connections'],
                 timeout=config['mpd']['connection_timeout'])
         except IOError as error:
-            logger.error(
-                'MPD server startup failed: %s',
+            raise exceptions.FrontendError(
+                'MPD server startup failed: %s' %
                 encoding.locale_decode(error))
-            sys.exit(1)
 
         logger.info('MPD server running at [%s]:%s', self.hostname, self.port)
 
     def on_start(self):
         if self.zeroconf_name:
             self.zeroconf_service = zeroconf.Zeroconf(
-                stype='_mpd._tcp', name=self.zeroconf_name,
-                host=self.hostname, port=self.port)
-
-            if self.zeroconf_service.publish():
-                logger.debug(
-                    'Registered MPD with Zeroconf as "%s"',
-                    self.zeroconf_service.name)
-            else:
-                logger.debug('Registering MPD with Zeroconf failed.')
+                name=self.zeroconf_name,
+                stype='_mpd._tcp',
+                port=self.port)
+            self.zeroconf_service.publish()
 
     def on_stop(self):
         if self.zeroconf_service:
@@ -60,22 +76,13 @@ class MpdFrontend(pykka.ThreadingActor, CoreListener):
 
         process.stop_actors_by_class(session.MpdSession)
 
+    def on_event(self, event, **kwargs):
+        if event not in _CORE_EVENTS_TO_IDLE_SUBSYSTEMS:
+            logger.warning(
+                'Got unexpected event: %s(%s)', event, ', '.join(kwargs))
+        else:
+            self.send_idle(_CORE_EVENTS_TO_IDLE_SUBSYSTEMS[event])
+
     def send_idle(self, subsystem):
-        listeners = pykka.ActorRegistry.get_by_class(session.MpdSession)
-        for listener in listeners:
-            getattr(listener.proxy(), 'on_idle')(subsystem)
-
-    def playback_state_changed(self, old_state, new_state):
-        self.send_idle('player')
-
-    def tracklist_changed(self):
-        self.send_idle('playlist')
-
-    def options_changed(self):
-        self.send_idle('options')
-
-    def volume_changed(self, volume):
-        self.send_idle('mixer')
-
-    def mute_changed(self, mute):
-        self.send_idle('output')
+        if subsystem:
+            listener.send(session.MpdSession, subsystem)

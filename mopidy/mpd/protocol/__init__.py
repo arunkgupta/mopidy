@@ -10,7 +10,7 @@ implement our own MPD server which is compatible with the numerous existing
 `MPD clients <http://mpd.wikia.com/wiki/Clients>`_.
 """
 
-from __future__ import unicode_literals
+from __future__ import absolute_import, unicode_literals
 
 import inspect
 
@@ -22,8 +22,8 @@ ENCODING = 'UTF-8'
 #: The MPD protocol uses ``\n`` as line terminator.
 LINE_TERMINATOR = '\n'
 
-#: The MPD protocol version is 0.17.0.
-VERSION = '0.17.0'
+#: The MPD protocol version is 0.19.0.
+VERSION = '0.19.0'
 
 
 def load_protocol_modules():
@@ -33,10 +33,11 @@ def load_protocol_modules():
     """
     from . import (  # noqa
         audio_output, channels, command_list, connection, current_playlist,
-        music_db, playback, reflection, status, stickers, stored_playlists)
+        mount, music_db, playback, reflection, status, stickers,
+        stored_playlists)
 
 
-def INT(value):
+def INT(value):  # noqa: N802
     """Converts a value that matches [+-]?\d+ into and integer."""
     if value is None:
         raise ValueError('None is not a valid integer')
@@ -44,7 +45,7 @@ def INT(value):
     return int(value)
 
 
-def UINT(value):
+def UINT(value):  # noqa: N802
     """Converts a value that matches \d+ into an integer."""
     if value is None:
         raise ValueError('None is not a valid integer')
@@ -53,14 +54,14 @@ def UINT(value):
     return int(value)
 
 
-def BOOL(value):
+def BOOL(value):  # noqa: N802
     """Convert the values 0 and 1 into booleans."""
     if value in ('1', '0'):
         return bool(int(value))
     raise ValueError('%r is not 0 or 1' % value)
 
 
-def RANGE(value):
+def RANGE(value):  # noqa: N802
     """Convert a single integer or range spec into a slice
 
     ``n`` should become ``slice(n, n+1)``
@@ -83,6 +84,7 @@ def RANGE(value):
 
 
 class Commands(object):
+
     """Collection of MPD commands to expose to users.
 
     Normally used through the global instance which command handlers have been
@@ -138,7 +140,13 @@ class Commands(object):
             def validate(*args, **kwargs):
                 if varargs:
                     return func(*args, **kwargs)
-                callargs = inspect.getcallargs(func, *args, **kwargs)
+
+                try:
+                    callargs = inspect.getcallargs(func, *args, **kwargs)
+                except TypeError:
+                    raise exceptions.MpdArgError(
+                        'wrong number of arguments for "%s"' % name)
+
                 for key, value in callargs.items():
                     default = defaults.get(key, object())
                     if key in validators and value != default:
@@ -146,6 +154,7 @@ class Commands(object):
                             callargs[key] = validators[key](value)
                         except ValueError:
                             raise exceptions.MpdArgError('incorrect arguments')
+
                 return func(**callargs)
 
             validate.auth_required = auth_required

@@ -1,4 +1,4 @@
-from __future__ import unicode_literals
+from __future__ import absolute_import, unicode_literals
 
 import re
 
@@ -6,9 +6,9 @@ from setuptools import find_packages, setup
 
 
 def get_version(filename):
-    init_py = open(filename).read()
-    metadata = dict(re.findall("__([a-z]+)__ = '([^']+)'", init_py))
-    return metadata['version']
+    with open(filename) as fh:
+        metadata = dict(re.findall("__([a-z]+)__ = '([^']+)'", fh.read()))
+        return metadata['version']
 
 
 setup(
@@ -24,16 +24,12 @@ setup(
     zip_safe=False,
     include_package_data=True,
     install_requires=[
-        'setuptools',
         'Pykka >= 1.1',
-        'tornado >= 3.1',
+        'requests >= 2.0',
+        'setuptools',
+        'tornado >= 2.3',
     ],
     extras_require={'http': []},
-    test_suite='nose.collector',
-    tests_require=[
-        'nose',
-        'mock >= 1.0',
-    ],
     entry_points={
         'console_scripts': [
             'mopidy = mopidy.__main__:main',
@@ -41,12 +37,15 @@ setup(
         'mopidy.ext': [
             'http = mopidy.http:Extension',
             'local = mopidy.local:Extension',
+            'file = mopidy.file:Extension',
+            'm3u = mopidy.m3u:Extension',
             'mpd = mopidy.mpd:Extension',
+            'softwaremixer = mopidy.softwaremixer:Extension',
             'stream = mopidy.stream:Extension',
         ],
     },
     classifiers=[
-        'Development Status :: 4 - Beta',
+        'Development Status :: 5 - Production/Stable',
         'Environment :: No Input/Output (Daemon)',
         'Intended Audience :: End Users/Desktop',
         'License :: OSI Approved :: Apache Software License',

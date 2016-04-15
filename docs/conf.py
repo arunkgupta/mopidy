@@ -2,7 +2,7 @@
 
 """Mopidy documentation build configuration file"""
 
-from __future__ import unicode_literals
+from __future__ import absolute_import, unicode_literals
 
 import os
 import sys
@@ -26,45 +26,21 @@ class Mock(object):
 
     @classmethod
     def __getattr__(self, name):
-        if name in ('__file__', '__path__'):
-            return '/dev/null'
-        elif name == 'get_system_config_dirs':
-            # glib.get_system_config_dirs()
-            return tuple
-        elif name == 'get_user_config_dir':
-            # glib.get_user_config_dir()
+        if name == 'get_system_config_dirs':  # GLib.get_system_config_dirs()
+            return list
+        elif name == 'get_user_config_dir':  # GLib.get_user_config_dir()
             return str
-        elif (name[0] == name[0].upper()
-                # gst.interfaces.MIXER_TRACK_*
-                and not name.startswith('MIXER_TRACK_')
-                # gst.PadTemplate
-                and not name.startswith('PadTemplate')
-                # dbus.String()
-                and not name == 'String'):
-            return type(name, (), {})
         else:
             return Mock()
 
+
 MOCK_MODULES = [
-    'cherrypy',
     'dbus',
     'dbus.mainloop',
     'dbus.mainloop.glib',
     'dbus.service',
-    'glib',
-    'gobject',
-    'gst',
-    'pygst',
+    'mopidy.internal.gi',
     'pykka',
-    'pykka.actor',
-    'pykka.future',
-    'pykka.registry',
-    'pylast',
-    'ws4py',
-    'ws4py.messaging',
-    'ws4py.server',
-    'ws4py.server.cherrypyserver',
-    'ws4py.websocket',
 ]
 for mod_name in MOCK_MODULES:
     sys.modules[mod_name] = Mock()
@@ -83,7 +59,7 @@ def setup(app):
 
 # -- General configuration ----------------------------------------------------
 
-needs_sphinx = '1.0'
+needs_sphinx = '1.3'
 
 extensions = [
     'sphinx.ext.autodoc',
@@ -98,11 +74,14 @@ source_suffix = '.rst'
 master_doc = 'index'
 
 project = 'Mopidy'
-copyright = '2009-2014, Stein Magnus Jodal and contributors'
+copyright = '2009-2016, Stein Magnus Jodal and contributors'
 
-from mopidy.utils.versioning import get_version
+from mopidy.internal.versioning import get_version
 release = get_version()
 version = '.'.join(release.split('.')[:2])
+
+# To make the build reproducible, avoid using today's date in the manpages
+today = '2016'
 
 exclude_trees = ['_build']
 
@@ -113,8 +92,7 @@ modindex_common_prefix = ['mopidy.']
 
 # -- Options for HTML output --------------------------------------------------
 
-html_theme = 'default'
-html_theme_path = ['_themes']
+html_theme = 'sphinx_rtd_theme'
 html_static_path = ['_static']
 
 html_use_modindex = True
@@ -156,15 +134,27 @@ man_pages = [
 extlinks = {
     'issue': ('https://github.com/mopidy/mopidy/issues/%s', '#'),
     'commit': ('https://github.com/mopidy/mopidy/commit/%s', 'commit '),
+    'js': ('https://github.com/mopidy/mopidy.js/issues/%s', 'mopidy.js#'),
     'mpris': (
         'https://github.com/mopidy/mopidy-mpris/issues/%s', 'mopidy-mpris#'),
+    'discuss': ('https://discuss.mopidy.com/t/%s', 'discuss.mopidy.com/t/'),
 }
 
 
 # -- Options for intersphinx extension ----------------------------------------
 
 intersphinx_mapping = {
-    'python': ('http://docs.python.org/2', None),
-    'pykka': ('http://www.pykka.org/en/latest/', None),
+    'python': ('https://docs.python.org/2', None),
+    'pykka': ('https://www.pykka.org/en/latest/', None),
     'tornado': ('http://www.tornadoweb.org/en/stable/', None),
 }
+
+# -- Options for linkcheck builder -------------------------------------------
+
+linkcheck_ignore = [  # Some sites work in browser but linkcheck fails.
+    r'http://localhost:\d+/',
+    r'http://wiki.commonjs.org',
+    r'http://vk.com',
+    r'http://$']
+
+linkcheck_anchors = False  # This breaks on links that use # for other stuff

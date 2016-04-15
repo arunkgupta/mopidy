@@ -4,28 +4,57 @@
 API reference
 *************
 
-.. warning:: API stability
+.. note::
 
     Only APIs documented here are public and open for use by Mopidy
-    extensions. We will change these APIs, but will keep the changelog up to
-    date with all breaking changes.
+    extensions.
 
-    From Mopidy 1.0 and onwards, we intend to keep these APIs far more stable.
 
+Concepts
+========
 
 .. toctree::
-    :glob:
 
-    concepts
+    architecture
     models
-    backends
+
+
+Basics
+======
+
+.. toctree::
+
     core
-    audio
-    frontends
-    commands
+    frontend
+    backend
     ext
-    config
-    zeroconf
+
+
+Web/JavaScript
+==============
+
+.. toctree::
+
     http-server
     http
     js
+
+
+Audio
+=====
+
+.. toctree::
+
+    audio
+    mixer
+
+
+Utilities
+=========
+
+.. toctree::
+
+    commands
+    config
+    httpclient
+    zeroconf

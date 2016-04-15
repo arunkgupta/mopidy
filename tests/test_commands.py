@@ -1,4 +1,4 @@
-from __future__ import unicode_literals
+from __future__ import absolute_import, unicode_literals
 
 import argparse
 import unittest
@@ -9,6 +9,7 @@ from mopidy import commands
 
 
 class ConfigOverrideTypeTest(unittest.TestCase):
+
     def test_valid_override(self):
         expected = (b'section', b'key', b'value')
         self.assertEqual(
@@ -35,24 +36,22 @@ class ConfigOverrideTypeTest(unittest.TestCase):
             expected, commands.config_override_type(b'section/key=  '))
 
     def test_invalid_override(self):
-        self.assertRaises(
-            argparse.ArgumentTypeError,
-            commands.config_override_type, b'section/key')
-        self.assertRaises(
-            argparse.ArgumentTypeError,
-            commands.config_override_type, b'section=')
-        self.assertRaises(
-            argparse.ArgumentTypeError,
-            commands.config_override_type, b'section')
+        with self.assertRaises(argparse.ArgumentTypeError):
+            commands.config_override_type(b'section/key')
+        with self.assertRaises(argparse.ArgumentTypeError):
+            commands.config_override_type(b'section=')
+        with self.assertRaises(argparse.ArgumentTypeError):
+            commands.config_override_type(b'section')
 
 
 class CommandParsingTest(unittest.TestCase):
-    def setUp(self):
+
+    def setUp(self):  # noqa: N802
         self.exit_patcher = mock.patch.object(commands.Command, 'exit')
         self.exit_mock = self.exit_patcher.start()
         self.exit_mock.side_effect = SystemExit
 
-    def tearDown(self):
+    def tearDown(self):  # noqa: N802
         self.exit_patcher.stop()
 
     def test_command_parsing_returns_namespace(self):
@@ -261,6 +260,7 @@ class CommandParsingTest(unittest.TestCase):
 
 
 class UsageTest(unittest.TestCase):
+
     @mock.patch('sys.argv')
     def test_prog_name_default_and_override(self, argv_mock):
         argv_mock.__getitem__.return_value = '/usr/bin/foo'
@@ -297,6 +297,7 @@ class UsageTest(unittest.TestCase):
 
 
 class HelpTest(unittest.TestCase):
+
     @mock.patch('sys.argv')
     def test_prog_name_default_and_override(self, argv_mock):
         argv_mock.__getitem__.return_value = '/usr/bin/foo'
@@ -488,6 +489,7 @@ class HelpTest(unittest.TestCase):
 
 
 class RunTest(unittest.TestCase):
+
     def test_default_implmentation_raises_error(self):
         with self.assertRaises(NotImplementedError):
             commands.Command().run()

@@ -8,18 +8,6 @@ We've made a JavaScript library, Mopidy.js, which wraps the
 :ref:`websocket-api` and gets you quickly started with working on your client
 instead of figuring out how to communicate with Mopidy.
 
-.. warning:: API stability
-
-    Since the Mopidy.js API exposes our internal core API directly it is to be
-    regarded as **experimental**. We cannot promise to keep any form of
-    backwards compatibility between releases as we will need to change the core
-    API while working out how to support new use cases. Thus, if you use this
-    API, you must expect to do small adjustments to your client for every
-    release of Mopidy.
-
-    From Mopidy 1.0 and onwards, we intend to keep the core API far more
-    stable.
-
 
 Getting the library for browser use
 ===================================
@@ -33,9 +21,9 @@ available at:
 
 You may need to adjust hostname and port for your local setup.
 
-Thus, if you use Mopidy to host your web client, like described above, you can
-load the latest version of Mopidy.js by adding the following script tag to your
-HTML file:
+Thus, if you use Mopidy to host your web client, like described in
+:ref:`static-web-client`, you can load the latest version of Mopidy.js by
+adding the following script tag to your HTML file:
 
 .. code-block:: html
 
@@ -66,9 +54,10 @@ After npm completes, you can import Mopidy.js using ``require()``:
 Getting the library for development on the library
 ==================================================
 
-If you want to work on the Mopidy.js library itself, you'll find a complete
-development setup in the ``js/`` dir in our repo. The instructions in
-``js/README.md`` will guide you on your way.
+If you want to work on the Mopidy.js library itself, you'll find the source
+code and a complete development setup in the `Mopidy.js Git repo
+<https://github.com/mopidy/mopidy.js>`_. The instructions in ``README.md`` will
+guide you on your way.
 
 
 Creating an instance
@@ -200,13 +189,10 @@ you've hooked up an errback (more on that a bit later) to the promise returned
 from the call, the errback will be called with a ``Mopidy.ConnectionError``
 instance.
 
-All methods in Mopidy's :ref:`core-api` is available via Mopidy.js. The core
-API attributes is *not* available, but that shouldn't be a problem as we've
-added (undocumented) getters and setters for all of them, so you can access the
-attributes as well from JavaScript. For example, the
-:attr:`mopidy.core.PlaybackController.state` attribute is available in
-JSON-RPC as the method ``core.playback.get_state`` and in Mopidy.js as
-``mopidy.playback.getState()``.
+All methods in Mopidy's :ref:`core-api` is available via Mopidy.js. For
+example, the :meth:`mopidy.core.PlaybackController.get_state` method is
+available in JSON-RPC as the method ``core.playback.get_state`` and in
+Mopidy.js as ``mopidy.playback.getState()``.
 
 Both the WebSocket API and the JavaScript API are based on introspection of the
 core Python API. Thus, they will always be up to date and immediately reflect
@@ -229,8 +215,7 @@ by looking at the method's ``description`` and ``params`` attributes:
 
 JSON-RPC 2.0 limits method parameters to be sent *either* by-position or
 by-name. Combinations of both, like we're used to from Python, isn't supported
-by JSON-RPC 2.0. To further limit this, Mopidy.js currently only supports
-passing parameters by-position.
+by JSON-RPC 2.0.
 
 Obviously, you'll want to get a return value from many of your method calls.
 Since everything is happening across the WebSocket and maybe even across the
@@ -271,7 +256,7 @@ chain. The function will be called with the error object as the only argument:
 .. code-block:: js
 
     mopidy.playback.getCurrentTrack()
-        .catch(console.error.bind(console));
+        .catch(console.error.bind(console))
         .done(printCurrentTrack);
 
 You can also register the error handler at the end of the promise chain by
@@ -283,14 +268,16 @@ passing it as the second argument to ``done()``:
         .done(printCurrentTrack, console.error.bind(console));
 
 If you don't hook up an error handler function and never call ``done()`` on the
-promise object, when.js will log warnings to the console that you have
-unhandled errors. In general, unhandled errors will not go silently missing.
+promise object, warnings will be logged to the console complaining that you
+have unhandled errors. In general, unhandled errors will not go silently
+missing.
 
 The promise objects returned by Mopidy.js adheres to the `CommonJS Promises/A
 <http://wiki.commonjs.org/wiki/Promises/A>`_ standard. We use the
-implementation known as `when.js <https://github.com/cujojs/when>`_. Please
-refer to when.js' documentation or the standard for further details on how to
-work with promise objects.
+implementation known as `when.js <https://github.com/cujojs/when>`_, and
+reexport it as ``Mopidy.when`` so you don't have to duplicate the dependency.
+Please refer to when.js' documentation or the standard for further details on
+how to work with promise objects.
 
 
 Cleaning up

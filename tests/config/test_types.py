@@ -1,6 +1,6 @@
 # encoding: utf-8
 
-from __future__ import unicode_literals
+from __future__ import absolute_import, unicode_literals
 
 import logging
 import socket
@@ -8,12 +8,14 @@ import unittest
 
 import mock
 
+from mopidy import compat
 from mopidy.config import types
 
 # TODO: DecodeTest and EncodeTest
 
 
 class ConfigValueTest(unittest.TestCase):
+
     def test_deserialize_passes_through(self):
         value = types.ConfigValue()
         sentinel = object()
@@ -35,6 +37,7 @@ class ConfigValueTest(unittest.TestCase):
 
 
 class DeprecatedTest(unittest.TestCase):
+
     def test_deserialize_returns_deprecated_value(self):
         self.assertIsInstance(types.Deprecated().deserialize(b'foobar'),
                               types.DeprecatedValue)
@@ -45,10 +48,11 @@ class DeprecatedTest(unittest.TestCase):
 
 
 class StringTest(unittest.TestCase):
+
     def test_deserialize_conversion_success(self):
         value = types.String()
         self.assertEqual('foo', value.deserialize(b' foo '))
-        self.assertIsInstance(value.deserialize(b'foo'), unicode)
+        self.assertIsInstance(value.deserialize(b'foo'), compat.text_type)
 
     def test_deserialize_decodes_utf8(self):
         value = types.String()
@@ -116,10 +120,11 @@ class StringTest(unittest.TestCase):
 
 
 class SecretTest(unittest.TestCase):
+
     def test_deserialize_decodes_utf8(self):
         value = types.Secret()
         result = value.deserialize('æøå'.encode('utf-8'))
-        self.assertIsInstance(result, unicode)
+        self.assertIsInstance(result, compat.text_type)
         self.assertEqual('æøå', result)
 
     def test_deserialize_enforces_required(self):
@@ -151,6 +156,7 @@ class SecretTest(unittest.TestCase):
 
 
 class IntegerTest(unittest.TestCase):
+
     def test_deserialize_conversion_success(self):
         value = types.Integer()
         self.assertEqual(123, value.deserialize('123'))
@@ -185,6 +191,7 @@ class IntegerTest(unittest.TestCase):
 
 
 class BooleanTest(unittest.TestCase):
+
     def test_deserialize_conversion_success(self):
         value = types.Boolean()
         for true in ('1', 'yes', 'true', 'on'):
@@ -213,6 +220,10 @@ class BooleanTest(unittest.TestCase):
         result = value.serialize(False)
         self.assertEqual(b'false', result)
         self.assertIsInstance(result, bytes)
+
+    def test_deserialize_respects_optional(self):
+        value = types.Boolean(optional=True)
+        self.assertEqual(None, value.deserialize(''))
 
     # TODO: test None or other invalid values into serialize?
 
@@ -276,11 +287,14 @@ class ListTest(unittest.TestCase):
 
 
 class LogLevelTest(unittest.TestCase):
-    levels = {'critical': logging.CRITICAL,
-              'error': logging.ERROR,
-              'warning': logging.WARNING,
-              'info': logging.INFO,
-              'debug': logging.DEBUG}
+    levels = {
+        'critical': logging.CRITICAL,
+        'error': logging.ERROR,
+        'warning': logging.WARNING,
+        'info': logging.INFO,
+        'debug': logging.DEBUG,
+        'all': logging.NOTSET,
+    }
 
     def test_deserialize_conversion_success(self):
         value = types.LogLevel()
@@ -304,6 +318,7 @@ class LogLevelTest(unittest.TestCase):
 
 
 class HostnameTest(unittest.TestCase):
+
     @mock.patch('socket.getaddrinfo')
     def test_deserialize_conversion_success(self, getaddrinfo_mock):
         value = types.Hostname()
@@ -331,6 +346,7 @@ class HostnameTest(unittest.TestCase):
 
 
 class PortTest(unittest.TestCase):
+
     def test_valid_ports(self):
         value = types.Port()
         self.assertEqual(0, value.deserialize('0'))
@@ -348,6 +364,7 @@ class PortTest(unittest.TestCase):
 
 
 class ExpandedPathTest(unittest.TestCase):
+
     def test_is_bytes(self):
         self.assertIsInstance(types.ExpandedPath(b'/tmp', b'foo'), bytes)
 
@@ -356,7 +373,7 @@ class ExpandedPathTest(unittest.TestCase):
         expanded = b'expanded_path'
         self.assertEqual(expanded, types.ExpandedPath(original, expanded))
 
-    @mock.patch('mopidy.utils.path.expand_path')
+    @mock.patch('mopidy.internal.path.expand_path')
     def test_orginal_stores_unexpanded(self, expand_path_mock):
         original = b'~'
         expanded = b'expanded_path'
@@ -365,6 +382,7 @@ class ExpandedPathTest(unittest.TestCase):
 
 
 class PathTest(unittest.TestCase):
+
     def test_deserialize_conversion_success(self):
         result = types.Path().deserialize(b'/foo')
         self.assertEqual('/foo', result)

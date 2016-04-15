@@ -1,8 +1,8 @@
 .. _audio-api:
 
-*********
-Audio API
-*********
+*********************************
+:mod:`mopidy.audio` --- Audio API
+*********************************
 
 .. module:: mopidy.audio
     :synopsis: Thin wrapper around the parts of GStreamer we use
@@ -34,4 +34,10 @@ Audio scanner
 =============
 
 .. autoclass:: mopidy.audio.scan.Scanner
+    :members:
+
+Audio utils
+===========
+
+.. automodule:: mopidy.audio.utils
     :members:

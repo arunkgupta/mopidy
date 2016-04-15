@@ -1,12 +1,11 @@
-from __future__ import print_function, unicode_literals
+from __future__ import absolute_import, print_function, unicode_literals
 
 import logging
 import os
 import signal
 import sys
 
-import gobject
-gobject.threads_init()
+from mopidy.internal.gi import Gst  # noqa: Import to initialize
 
 try:
     # Make GObject's mainloop the event loop for python-dbus
@@ -18,15 +17,8 @@ except ImportError:
 
 import pykka.debug
 
-
-# Extract any command line arguments. This needs to be done before GStreamer is
-# imported, so that GStreamer doesn't hijack e.g. ``--help``.
-mopidy_args = sys.argv[1:]
-sys.argv[1:] = []
-
-
 from mopidy import commands, config as config_lib, ext
-from mopidy.utils import encoding, log, path, process, versioning
+from mopidy.internal import encoding, log, path, process, versioning
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +27,7 @@ def main():
     log.bootstrap_delayed_logging()
     logger.info('Starting Mopidy %s', versioning.get_version())
 
-    signal.signal(signal.SIGTERM, process.exit_handler)
+    signal.signal(signal.SIGTERM, process.sigterm_handler)
     # Windows does not have signal.SIGUSR1
     if hasattr(signal, 'SIGUSR1'):
         signal.signal(signal.SIGUSR1, pykka.debug.log_thread_tracebacks)
@@ -51,21 +43,23 @@ def main():
         root_cmd.add_child('config', config_cmd)
         root_cmd.add_child('deps', deps_cmd)
 
-        installed_extensions = ext.load_extensions()
+        extensions_data = ext.load_extensions()
 
-        for extension in installed_extensions:
-            ext_cmd = extension.get_command()
-            if ext_cmd:
-                ext_cmd.set(extension=extension)
-                root_cmd.add_child(extension.ext_name, ext_cmd)
+        for data in extensions_data:
+            if data.command:  # TODO: check isinstance?
+                data.command.set(extension=data.extension)
+                root_cmd.add_child(data.extension.ext_name, data.command)
 
-        args = root_cmd.parse(mopidy_args)
-
-        create_file_structures_and_config(args, installed_extensions)
-        check_old_locations()
+        args = root_cmd.parse(sys.argv[1:])
 
         config, config_errors = config_lib.load(
-            args.config_files, installed_extensions, args.config_overrides)
+            args.config_files,
+            [d.config_schema for d in extensions_data],
+            [d.config_defaults for d in extensions_data],
+            args.config_overrides)
+
+        create_core_dirs(config)
+        create_initial_config_file(args, extensions_data)
 
         verbosity_level = args.base_verbosity_level
         if args.verbosity_level:
@@ -75,8 +69,11 @@ def main():
 
         extensions = {
             'validate': [], 'config': [], 'disabled': [], 'enabled': []}
-        for extension in installed_extensions:
-            if not ext.validate_extension(extension):
+        for data in extensions_data:
+            extension = data.extension
+
+            # TODO: factor out all of this to a helper that can be tested
+            if not ext.validate_extension_data(data):
                 config[extension.ext_name] = {'enabled': False}
                 config_errors[extension.ext_name] = {
                     'enabled': 'extension disabled by self check.'}
@@ -94,12 +91,13 @@ def main():
             else:
                 extensions['enabled'].append(extension)
 
-        log_extension_info(installed_extensions, extensions['enabled'])
+        log_extension_info([d.extension for d in extensions_data],
+                           extensions['enabled'])
 
         # Config and deps commands are simply special cased for now.
         if args.command == config_cmd:
-            return args.command.run(
-                config, config_errors, installed_extensions)
+            schemas = [d.config_schema for d in extensions_data]
+            return args.command.run(config, config_errors, schemas)
         elif args.command == deps_cmd:
             return args.command.run()
 
@@ -119,10 +117,19 @@ def main():
             return 1
 
         for extension in extensions['enabled']:
-            extension.setup(registry)
+            try:
+                extension.setup(registry)
+            except Exception:
+                # TODO: would be nice a transactional registry. But sadly this
+                # is a bit tricky since our current API is giving out a mutable
+                # list. We might however be able to replace this with a
+                # collections.Sequence to provide a RO view.
+                logger.exception('Extension %s failed during setup, this might'
+                                 ' have left the registry in a bad state.',
+                                 extension.ext_name)
 
         # Anything that wants to exit after this point must use
-        # mopidy.utils.process.exit_process as actors can have been started.
+        # mopidy.internal.process.exit_process as actors can have been started.
         try:
             return args.command.run(args, proxied_config)
         except NotImplementedError:
@@ -136,39 +143,28 @@ def main():
         raise
 
 
-def create_file_structures_and_config(args, extensions):
-    path.get_or_create_dir(b'$XDG_DATA_DIR/mopidy')
-    path.get_or_create_dir(b'$XDG_CONFIG_DIR/mopidy')
+def create_core_dirs(config):
+    path.get_or_create_dir(config['core']['cache_dir'])
+    path.get_or_create_dir(config['core']['config_dir'])
+    path.get_or_create_dir(config['core']['data_dir'])
 
-    # Initialize whatever the last config file is with defaults
+
+def create_initial_config_file(args, extensions_data):
+    """Initialize whatever the last config file is with defaults"""
+
     config_file = args.config_files[-1]
+
     if os.path.exists(path.expand_path(config_file)):
         return
 
     try:
-        default = config_lib.format_initial(extensions)
+        default = config_lib.format_initial(extensions_data)
         path.get_or_create_file(config_file, mkdir=False, content=default)
         logger.info('Initialized %s with default config', config_file)
     except IOError as error:
         logger.warning(
             'Unable to initialize %s with default config: %s',
             config_file, encoding.locale_decode(error))
-
-
-def check_old_locations():
-    dot_mopidy_dir = path.expand_path(b'~/.mopidy')
-    if os.path.isdir(dot_mopidy_dir):
-        logger.warning(
-            'Old Mopidy dot dir found at %s. Please migrate your config to '
-            'the ini-file based config format. See release notes for further '
-            'instructions.', dot_mopidy_dir)
-
-    old_settings_file = path.expand_path(b'$XDG_CONFIG_DIR/mopidy/settings.py')
-    if os.path.isfile(old_settings_file):
-        logger.warning(
-            'Old Mopidy settings file found at %s. Please migrate your '
-            'config to the ini-file based config format. See release notes '
-            'for further instructions.', old_settings_file)
 
 
 def log_extension_info(all_extensions, enabled_extensions):

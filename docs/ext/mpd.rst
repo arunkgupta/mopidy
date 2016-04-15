@@ -45,7 +45,6 @@ Items on this list will probably not be supported in the near future.
 The following items are currently not supported, but should be added in the
 near future:
 
-- Modifying stored playlists is not supported
 - ``tagtypes`` is not supported
 - Live update of the music database is not supported
 
@@ -99,3 +98,10 @@ See :ref:`config` for general help on configuring Mopidy.
     ``$hostname`` and ``$port`` can be used in the name.
 
     Set to an empty string to disable Zeroconf for MPD.
+
+.. confval:: mpd/command_blacklist
+
+    List of MPD commands which are disabled by the server. By default this
+    setting blacklists ``listall`` and ``listallinfo``. These commands don't
+    fit well with many of Mopidy's backends and are better left disabled unless
+    you know what you are doing.

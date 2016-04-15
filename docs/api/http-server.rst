@@ -25,6 +25,8 @@ For details on how to make a Mopidy extension, see the :ref:`extensiondev`
 guide.
 
 
+.. _static-web-client:
+
 Static web client example
 =========================
 
@@ -43,7 +45,7 @@ available at http://localhost:6680/mywebclient/foo.html.
 
 ::
 
-    from __future__ import unicode_literals
+    from __future__ import absolute_import, unicode_literals
 
     import os
 
@@ -95,7 +97,7 @@ Mopidy $version``.
 
 ::
 
-    from __future__ import unicode_literals
+    from __future__ import absolute_import, unicode_literals
 
     import os
 
@@ -149,7 +151,7 @@ http://localhost:6680/mywebclient/.
 
 ::
 
-    from __future__ import unicode_literals
+    from __future__ import absolute_import, unicode_literals
 
     import os
 
@@ -187,3 +189,9 @@ http://localhost:6680/mywebclient/.
             })
 
         # See the Extension API for the full details on this class
+
+
+API implementors
+================
+
+See :ref:`ext-web`.

@@ -1,15 +1,18 @@
-from __future__ import unicode_literals
+from __future__ import absolute_import, unicode_literals
 
+import functools
 import logging
 import os
+import socket
 
 import tornado.escape
+import tornado.ioloop
 import tornado.web
 import tornado.websocket
 
 import mopidy
 from mopidy import core, models
-from mopidy.utils import jsonrpc
+from mopidy.internal import encoding, jsonrpc
 
 
 logger = logging.getLogger(__name__)
@@ -40,7 +43,9 @@ def make_jsonrpc_wrapper(core_actor):
         objects={
             'core.get_uri_schemes': core.Core.get_uri_schemes,
             'core.get_version': core.Core.get_version,
+            'core.history': core.HistoryController,
             'core.library': core.LibraryController,
+            'core.mixer': core.MixerController,
             'core.playback': core.PlaybackController,
             'core.playlists': core.PlaylistsController,
             'core.tracklist': core.TracklistController,
@@ -50,7 +55,9 @@ def make_jsonrpc_wrapper(core_actor):
             'core.describe': inspector.describe,
             'core.get_uri_schemes': core_actor.get_uri_schemes,
             'core.get_version': core_actor.get_version,
+            'core.history': core_actor.history,
             'core.library': core_actor.library,
+            'core.mixer': core_actor.mixer,
             'core.playback': core_actor.playback,
             'core.playlists': core_actor.playlists,
             'core.tracklist': core_actor.tracklist,
@@ -58,6 +65,19 @@ def make_jsonrpc_wrapper(core_actor):
         decoders=[models.model_json_decoder],
         encoders=[models.ModelJSONEncoder]
     )
+
+
+def _send_broadcast(client, msg):
+    # We could check for client.ws_connection, but we don't really
+    # care why the broadcast failed, we just want the rest of them
+    # to succeed, so catch everything.
+    try:
+        client.write_message(msg)
+    except Exception as e:
+        error_msg = encoding.locale_decode(e)
+        logger.debug('Broadcast of WebSocket message to %s failed: %s',
+                     client.request.remote_ip, error_msg)
+        # TODO: should this do the same cleanup as the on_message code?
 
 
 class WebSocketHandler(tornado.websocket.WebSocketHandler):
@@ -69,14 +89,28 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
 
     @classmethod
     def broadcast(cls, msg):
+        if hasattr(tornado.ioloop.IOLoop, 'current'):
+            loop = tornado.ioloop.IOLoop.current()
+        else:
+            loop = tornado.ioloop.IOLoop.instance()  # Fallback for pre 3.0
+
+        # This can be called from outside the Tornado ioloop, so we need to
+        # safely cross the thread boundary by adding a callback to the loop.
         for client in cls.clients:
-            client.write_message(msg)
+            # One callback per client to keep time we hold up the loop short
+            # NOTE: Pre 3.0 does not support *args or **kwargs...
+            loop.add_callback(functools.partial(_send_broadcast, client, msg))
 
     def initialize(self, core):
         self.jsonrpc = make_jsonrpc_wrapper(core)
 
     def open(self):
-        self.set_nodelay(True)
+        if hasattr(self, 'set_nodelay'):
+            # New in Tornado 3.1
+            self.set_nodelay(True)
+        else:
+            self.stream.socket.setsockopt(
+                socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         self.clients.add(self)
         logger.debug(
             'New WebSocket connection from %s', self.request.remote_ip)
@@ -103,8 +137,17 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
                     'Sent WebSocket message to %s: %r',
                     self.request.remote_ip, response)
         except Exception as e:
-            logger.error('WebSocket request error: %s', e)
-            self.close()
+            error_msg = encoding.locale_decode(e)
+            logger.error('WebSocket request error: %s', error_msg)
+            if self.ws_connection:
+                # Tornado 3.2+ checks if self.ws_connection is None before
+                # using it, but not older versions.
+                self.close()
+
+    def check_origin(self, origin):
+        # Allow cross-origin WebSocket connections, like Tornado before 4.0
+        # defaulted to.
+        return True
 
 
 def set_mopidy_headers(request_handler):
@@ -114,6 +157,7 @@ def set_mopidy_headers(request_handler):
 
 
 class JsonRpcHandler(tornado.web.RequestHandler):
+
     def initialize(self, core):
         self.jsonrpc = make_jsonrpc_wrapper(core)
 
@@ -138,7 +182,7 @@ class JsonRpcHandler(tornado.web.RequestHandler):
                     'Sent RPC message to %s: %r',
                     self.request.remote_ip, response)
         except Exception as e:
-            logger.error('HTTP JSON-RPC request error:', e)
+            logger.error('HTTP JSON-RPC request error: %s', e)
             self.write_error(500)
 
     def set_extra_headers(self):
@@ -148,9 +192,13 @@ class JsonRpcHandler(tornado.web.RequestHandler):
 
 
 class ClientListHandler(tornado.web.RequestHandler):
+
     def initialize(self, apps, statics):
         self.apps = apps
         self.statics = statics
+
+    def get_template_path(self):
+        return os.path.dirname(__file__)
 
     def get(self):
         set_mopidy_headers(self)
@@ -166,6 +214,7 @@ class ClientListHandler(tornado.web.RequestHandler):
 
 
 class StaticFileHandler(tornado.web.StaticFileHandler):
+
     def set_extra_headers(self, path):
         set_mopidy_headers(self)
 

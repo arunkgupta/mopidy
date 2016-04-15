@@ -1,12 +1,12 @@
-from __future__ import unicode_literals
+from __future__ import absolute_import, unicode_literals
 
-import collections
 import logging
 import random
 
+from mopidy import exceptions
 from mopidy.core import listener
-from mopidy.models import TlTrack
-
+from mopidy.internal import deprecation, validation
+from mopidy.models import TlTrack, Track
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +16,7 @@ class TracklistController(object):
 
     def __init__(self, core):
         self.core = core
-        self._next_tlid = 0
+        self._next_tlid = 1
         self._tl_tracks = []
         self._version = 0
 
@@ -25,130 +25,228 @@ class TracklistController(object):
     # Properties
 
     def get_tl_tracks(self):
+        """Get tracklist as list of :class:`mopidy.models.TlTrack`."""
         return self._tl_tracks[:]
 
-    tl_tracks = property(get_tl_tracks)
+    tl_tracks = deprecation.deprecated_property(get_tl_tracks)
     """
-    List of :class:`mopidy.models.TlTrack`.
-
-    Read-only.
+    .. deprecated:: 1.0
+        Use :meth:`get_tl_tracks` instead.
     """
 
     def get_tracks(self):
+        """Get tracklist as list of :class:`mopidy.models.Track`."""
         return [tl_track.track for tl_track in self._tl_tracks]
 
-    tracks = property(get_tracks)
+    tracks = deprecation.deprecated_property(get_tracks)
     """
-    List of :class:`mopidy.models.Track` in the tracklist.
-
-    Read-only.
+    .. deprecated:: 1.0
+        Use :meth:`get_tracks` instead.
     """
 
     def get_length(self):
+        """Get length of the tracklist."""
         return len(self._tl_tracks)
 
-    length = property(get_length)
-    """Length of the tracklist."""
+    length = deprecation.deprecated_property(get_length)
+    """
+    .. deprecated:: 1.0
+        Use :meth:`get_length` instead.
+    """
 
     def get_version(self):
+        """
+        Get the tracklist version.
+
+        Integer which is increased every time the tracklist is changed. Is not
+        reset before Mopidy is restarted.
+        """
         return self._version
 
     def _increase_version(self):
         self._version += 1
-        self.core.playback.on_tracklist_change()
+        self.core.playback._on_tracklist_change()
         self._trigger_tracklist_changed()
 
-    version = property(get_version)
+    version = deprecation.deprecated_property(get_version)
     """
-    The tracklist version.
-
-    Read-only. Integer which is increased every time the tracklist is changed.
-    Is not reset before Mopidy is restarted.
+    .. deprecated:: 1.0
+        Use :meth:`get_version` instead.
     """
 
     def get_consume(self):
+        """Get consume mode.
+
+        :class:`True`
+            Tracks are removed from the tracklist when they have been played.
+        :class:`False`
+            Tracks are not removed from the tracklist.
+        """
         return getattr(self, '_consume', False)
 
     def set_consume(self, value):
+        """Set consume mode.
+
+        :class:`True`
+            Tracks are removed from the tracklist when they have been played.
+        :class:`False`
+            Tracks are not removed from the tracklist.
+        """
+        validation.check_boolean(value)
         if self.get_consume() != value:
             self._trigger_options_changed()
         return setattr(self, '_consume', value)
 
-    consume = property(get_consume, set_consume)
+    consume = deprecation.deprecated_property(get_consume, set_consume)
     """
-    :class:`True`
-        Tracks are removed from the playlist when they have been played.
-    :class:`False`
-        Tracks are not removed from the playlist.
+    .. deprecated:: 1.0
+        Use :meth:`get_consume` and :meth:`set_consume` instead.
     """
 
     def get_random(self):
+        """Get random mode.
+
+        :class:`True`
+            Tracks are selected at random from the tracklist.
+        :class:`False`
+            Tracks are played in the order of the tracklist.
+        """
         return getattr(self, '_random', False)
 
     def set_random(self, value):
+        """Set random mode.
+
+        :class:`True`
+            Tracks are selected at random from the tracklist.
+        :class:`False`
+            Tracks are played in the order of the tracklist.
+        """
+        validation.check_boolean(value)
         if self.get_random() != value:
             self._trigger_options_changed()
         if value:
-            self._shuffled = self.tl_tracks
+            self._shuffled = self.get_tl_tracks()
             random.shuffle(self._shuffled)
         return setattr(self, '_random', value)
 
-    random = property(get_random, set_random)
+    random = deprecation.deprecated_property(get_random, set_random)
     """
-    :class:`True`
-        Tracks are selected at random from the playlist.
-    :class:`False`
-        Tracks are played in the order of the playlist.
+    .. deprecated:: 1.0
+        Use :meth:`get_random` and :meth:`set_random` instead.
     """
 
     def get_repeat(self):
+        """
+        Get repeat mode.
+
+        :class:`True`
+            The tracklist is played repeatedly.
+        :class:`False`
+            The tracklist is played once.
+        """
         return getattr(self, '_repeat', False)
 
     def set_repeat(self, value):
+        """
+        Set repeat mode.
+
+        To repeat a single track, set both ``repeat`` and ``single``.
+
+        :class:`True`
+            The tracklist is played repeatedly.
+        :class:`False`
+            The tracklist is played once.
+        """
+        validation.check_boolean(value)
         if self.get_repeat() != value:
             self._trigger_options_changed()
         return setattr(self, '_repeat', value)
 
-    repeat = property(get_repeat, set_repeat)
+    repeat = deprecation.deprecated_property(get_repeat, set_repeat)
     """
-    :class:`True`
-        The current playlist is played repeatedly. To repeat a single track,
-        select both :attr:`repeat` and :attr:`single`.
-    :class:`False`
-        The current playlist is played once.
+    .. deprecated:: 1.0
+        Use :meth:`get_repeat` and :meth:`set_repeat` instead.
     """
 
     def get_single(self):
+        """
+        Get single mode.
+
+        :class:`True`
+            Playback is stopped after current song, unless in ``repeat`` mode.
+        :class:`False`
+            Playback continues after current song.
+        """
         return getattr(self, '_single', False)
 
     def set_single(self, value):
+        """
+        Set single mode.
+
+        :class:`True`
+            Playback is stopped after current song, unless in ``repeat`` mode.
+        :class:`False`
+            Playback continues after current song.
+        """
+        validation.check_boolean(value)
         if self.get_single() != value:
             self._trigger_options_changed()
         return setattr(self, '_single', value)
 
-    single = property(get_single, set_single)
+    single = deprecation.deprecated_property(get_single, set_single)
     """
-    :class:`True`
-        Playback is stopped after current song, unless in :attr:`repeat`
-        mode.
-    :class:`False`
-        Playback continues after current song.
+    .. deprecated:: 1.0
+        Use :meth:`get_single` and :meth:`set_single` instead.
     """
 
     # Methods
 
-    def index(self, tl_track):
+    def index(self, tl_track=None, tlid=None):
         """
         The position of the given track in the tracklist.
 
+        If neither *tl_track* or *tlid* is given we return the index of
+        the currently playing track.
+
         :param tl_track: the track to find the index of
-        :type tl_track: :class:`mopidy.models.TlTrack`
+        :type tl_track: :class:`mopidy.models.TlTrack` or :class:`None`
+        :param tlid: TLID of the track to find the index of
+        :type tlid: :class:`int` or :class:`None`
         :rtype: :class:`int` or :class:`None`
+
+        .. versionadded:: 1.1
+            The *tlid* parameter
         """
-        try:
-            return self._tl_tracks.index(tl_track)
-        except ValueError:
-            return None
+        tl_track is None or validation.check_instance(tl_track, TlTrack)
+        tlid is None or validation.check_integer(tlid, min=1)
+
+        if tl_track is None and tlid is None:
+            tl_track = self.core.playback.get_current_tl_track()
+
+        if tl_track is not None:
+            try:
+                return self._tl_tracks.index(tl_track)
+            except ValueError:
+                pass
+        elif tlid is not None:
+            for i, tl_track in enumerate(self._tl_tracks):
+                if tl_track.tlid == tlid:
+                    return i
+        return None
+
+    def get_eot_tlid(self):
+        """
+        The TLID of the track that will be played after the current track.
+
+        Not necessarily the same TLID as returned by :meth:`get_next_tlid`.
+
+        :rtype: :class:`int` or :class:`None`
+
+        .. versionadded:: 1.1
+        """
+
+        current_tl_track = self.core.playback.get_current_tl_track()
+        return getattr(self.eot_track(current_tl_track), 'tlid', None)
 
     def eot_track(self, tl_track):
         """
@@ -160,9 +258,11 @@ class TracklistController(object):
         :type tl_track: :class:`mopidy.models.TlTrack` or :class:`None`
         :rtype: :class:`mopidy.models.TlTrack` or :class:`None`
         """
-        if self.single and self.repeat:
+        deprecation.warn('core.tracklist.eot_track', pending=True)
+        tl_track is None or validation.check_instance(tl_track, TlTrack)
+        if self.get_single() and self.get_repeat():
             return tl_track
-        elif self.single:
+        elif self.get_single():
             return None
 
         # Current difference between next and EOT handling is that EOT needs to
@@ -170,54 +270,89 @@ class TracklistController(object):
         # shared.
         return self.next_track(tl_track)
 
+    def get_next_tlid(self):
+        """
+        The tlid of the track that will be played if calling
+        :meth:`mopidy.core.PlaybackController.next()`.
+
+        For normal playback this is the next track in the tracklist. If repeat
+        is enabled the next track can loop around the tracklist. When random is
+        enabled this should be a random track, all tracks should be played once
+        before the tracklist repeats.
+
+        :rtype: :class:`int` or :class:`None`
+
+        .. versionadded:: 1.1
+        """
+        current_tl_track = self.core.playback.get_current_tl_track()
+        return getattr(self.next_track(current_tl_track), 'tlid', None)
+
     def next_track(self, tl_track):
         """
         The track that will be played if calling
         :meth:`mopidy.core.PlaybackController.next()`.
 
-        For normal playback this is the next track in the playlist. If repeat
-        is enabled the next track can loop around the playlist. When random is
+        For normal playback this is the next track in the tracklist. If repeat
+        is enabled the next track can loop around the tracklist. When random is
         enabled this should be a random track, all tracks should be played once
-        before the list repeats.
+        before the tracklist repeats.
 
         :param tl_track: the reference track
         :type tl_track: :class:`mopidy.models.TlTrack` or :class:`None`
         :rtype: :class:`mopidy.models.TlTrack` or :class:`None`
         """
+        deprecation.warn('core.tracklist.next_track', pending=True)
+        tl_track is None or validation.check_instance(tl_track, TlTrack)
 
-        if not self.tl_tracks:
+        if not self._tl_tracks:
             return None
 
-        if self.random and not self._shuffled:
-            if self.repeat or not tl_track:
+        if self.get_random() and not self._shuffled:
+            if self.get_repeat() or not tl_track:
                 logger.debug('Shuffling tracks')
-                self._shuffled = self.tl_tracks
+                self._shuffled = self._tl_tracks[:]
                 random.shuffle(self._shuffled)
 
-        if self.random:
-            try:
+        if self.get_random():
+            if self._shuffled:
                 return self._shuffled[0]
-            except IndexError:
-                return None
-
-        if tl_track is None:
-            return self.tl_tracks[0]
-
-        next_index = self.index(tl_track) + 1
-        if self.repeat:
-            next_index %= len(self.tl_tracks)
-
-        try:
-            return self.tl_tracks[next_index]
-        except IndexError:
             return None
+
+        next_index = self.index(tl_track)
+        if next_index is None:
+            next_index = 0
+        else:
+            next_index += 1
+
+        if self.get_repeat():
+            next_index %= len(self._tl_tracks)
+        elif next_index >= len(self._tl_tracks):
+            return None
+
+        return self._tl_tracks[next_index]
+
+    def get_previous_tlid(self):
+        """
+        Returns the TLID of the track that will be played if calling
+        :meth:`mopidy.core.PlaybackController.previous()`.
+
+        For normal playback this is the previous track in the tracklist. If
+        random and/or consume is enabled it should return the current track
+        instead.
+
+        :rtype: :class:`int` or :class:`None`
+
+        .. versionadded:: 1.1
+        """
+        current_tl_track = self.core.playback.get_current_tl_track()
+        return getattr(self.previous_track(current_tl_track), 'tlid', None)
 
     def previous_track(self, tl_track):
         """
         Returns the track that will be played if calling
         :meth:`mopidy.core.PlaybackController.previous()`.
 
-        For normal playback this is the previous track in the playlist. If
+        For normal playback this is the previous track in the tracklist. If
         random and/or consume is enabled it should return the current track
         instead.
 
@@ -225,7 +360,10 @@ class TracklistController(object):
         :type tl_track: :class:`mopidy.models.TlTrack` or :class:`None`
         :rtype: :class:`mopidy.models.TlTrack` or :class:`None`
         """
-        if self.repeat or self.consume or self.random:
+        deprecation.warn('core.tracklist.previous_track', pending=True)
+        tl_track is None or validation.check_instance(tl_track, TlTrack)
+
+        if self.get_repeat() or self.get_consume() or self.get_random():
             return tl_track
 
         position = self.index(tl_track)
@@ -233,38 +371,75 @@ class TracklistController(object):
         if position in (None, 0):
             return None
 
-        return self.tl_tracks[position - 1]
+        # Since we know we are not at zero we have to be somewhere in the range
+        # 1 - len(tracks) Thus 'position - 1' will always be within the list.
+        return self._tl_tracks[position - 1]
 
-    def add(self, tracks=None, at_position=None, uri=None):
+    def add(self, tracks=None, at_position=None, uri=None, uris=None):
         """
-        Add the track or list of tracks to the tracklist.
+        Add tracks to the tracklist.
 
         If ``uri`` is given instead of ``tracks``, the URI is looked up in the
         library and the resulting tracks are added to the tracklist.
 
-        If ``at_position`` is given, the tracks placed at the given position in
-        the tracklist. If ``at_position`` is not given, the tracks are appended
-        to the end of the tracklist.
+        If ``uris`` is given instead of ``uri`` or ``tracks``, the URIs are
+        looked up in the library and the resulting tracks are added to the
+        tracklist.
+
+        If ``at_position`` is given, the tracks are inserted at the given
+        position in the tracklist. If ``at_position`` is not given, the tracks
+        are appended to the end of the tracklist.
 
         Triggers the :meth:`mopidy.core.CoreListener.tracklist_changed` event.
 
         :param tracks: tracks to add
-        :type tracks: list of :class:`mopidy.models.Track`
-        :param at_position: position in tracklist to add track
+        :type tracks: list of :class:`mopidy.models.Track` or :class:`None`
+        :param at_position: position in tracklist to add tracks
         :type at_position: int or :class:`None`
         :param uri: URI for tracks to add
-        :type uri: string
+        :type uri: string or :class:`None`
+        :param uris: list of URIs for tracks to add
+        :type uris: list of string or :class:`None`
         :rtype: list of :class:`mopidy.models.TlTrack`
-        """
-        assert tracks is not None or uri is not None, \
-            'tracks or uri must be provided'
 
-        if tracks is None and uri is not None:
-            tracks = self.core.library.lookup(uri)
+        .. versionadded:: 1.0
+            The ``uris`` argument.
+
+        .. deprecated:: 1.0
+            The ``tracks`` and ``uri`` arguments. Use ``uris``.
+        """
+        if sum(o is not None for o in [tracks, uri, uris]) != 1:
+            raise ValueError(
+                'Exactly one of "tracks", "uri" or "uris" must be set')
+
+        tracks is None or validation.check_instances(tracks, Track)
+        uri is None or validation.check_uri(uri)
+        uris is None or validation.check_uris(uris)
+        validation.check_integer(at_position or 0)
+
+        if tracks:
+            deprecation.warn('core.tracklist.add:tracks_arg')
+
+        if uri:
+            deprecation.warn('core.tracklist.add:uri_arg')
+
+        if tracks is None:
+            if uri is not None:
+                uris = [uri]
+
+            tracks = []
+            track_map = self.core.library.lookup(uris=uris)
+            for uri in uris:
+                tracks.extend(track_map[uri])
 
         tl_tracks = []
+        max_length = self.core._config['core']['max_tracklist_length']
 
         for track in tracks:
+            if self.get_length() >= max_length:
+                raise exceptions.TracklistFull(
+                    'Tracklist may contain at most %d tracks.' % max_length)
+
             tl_track = TlTrack(self._next_tlid, track)
             self._next_tlid += 1
             if at_position is not None:
@@ -302,41 +477,35 @@ class TracklistController(object):
 
             # Returns tracks with TLIDs 1, 2, 3, or 4 (tracklist ID)
             filter({'tlid': [1, 2, 3, 4]})
-            filter(tlid=[1, 2, 3, 4])
-
-            # Returns track with IDs 1, 5, or 7
-            filter({'id': [1, 5, 7]})
-            filter(id=[1, 5, 7])
 
             # Returns track with URIs 'xyz' or 'abc'
             filter({'uri': ['xyz', 'abc']})
-            filter(uri=['xyz', 'abc'])
 
-            # Returns tracks with ID 1 and URI 'xyz'
-            filter({'id': [1], 'uri': ['xyz']})
-            filter(id=[1], uri=['xyz'])
-
-            # Returns track with a matching ID (1, 3 or 6) and a matching URI
-            # ('xyz' or 'abc')
-            filter({'id': [1, 3, 6], 'uri': ['xyz', 'abc']})
-            filter(id=[1, 3, 6], uri=['xyz', 'abc'])
+            # Returns track with a matching TLIDs (1, 3 or 6) and a
+            # matching URI ('xyz' or 'abc')
+            filter({'tlid': [1, 3, 6], 'uri': ['xyz', 'abc']})
 
         :param criteria: on or more criteria to match by
         :type criteria: dict, of (string, list) pairs
         :rtype: list of :class:`mopidy.models.TlTrack`
+
+        .. deprecated:: 1.1
+            Providing the criteria via ``kwargs``.
         """
+        if kwargs:
+            deprecation.warn('core.tracklist.filter:kwargs_criteria')
+
         criteria = criteria or kwargs
+        tlids = criteria.pop('tlid', [])
+        validation.check_query(criteria, validation.TRACKLIST_FIELDS)
+        validation.check_instances(tlids, int)
+
         matches = self._tl_tracks
-        for (key, values) in criteria.iteritems():
-            if (not isinstance(values, collections.Iterable)
-                    or isinstance(values, basestring)):
-                # Fail hard if anyone is using the <0.17 calling style
-                raise ValueError('Filter values must be iterable: %r' % values)
-            if key == 'tlid':
-                matches = filter(lambda ct: ct.tlid in values, matches)
-            else:
-                matches = filter(
-                    lambda ct: getattr(ct.track, key) in values, matches)
+        for (key, values) in criteria.items():
+            matches = [
+                ct for ct in matches if getattr(ct.track, key) in values]
+        if tlids:
+            matches = [ct for ct in matches if ct.tlid in tlids]
         return matches
 
     def move(self, start, end, to_position):
@@ -357,6 +526,7 @@ class TracklistController(object):
 
         tl_tracks = self._tl_tracks
 
+        # TODO: use validation helpers?
         assert start < end, 'start must be smaller than end'
         assert start >= 0, 'start must be at least zero'
         assert end <= len(tl_tracks), \
@@ -383,8 +553,14 @@ class TracklistController(object):
         :param criteria: on or more criteria to match by
         :type criteria: dict
         :rtype: list of :class:`mopidy.models.TlTrack` that was removed
+
+        .. deprecated:: 1.1
+            Providing the criteria  via ``kwargs``.
         """
-        tl_tracks = self.filter(criteria, **kwargs)
+        if kwargs:
+            deprecation.warn('core.tracklist.remove:kwargs_criteria')
+
+        tl_tracks = self.filter(criteria or kwargs)
         for tl_track in tl_tracks:
             position = self._tl_tracks.index(tl_track)
             del self._tl_tracks[position]
@@ -405,6 +581,7 @@ class TracklistController(object):
         """
         tl_tracks = self._tl_tracks
 
+        # TOOD: use validation helpers?
         if start is not None and end is not None:
             assert start < end, 'start must be smaller than end'
 
@@ -433,29 +610,32 @@ class TracklistController(object):
         :type end: int
         :rtype: :class:`mopidy.models.TlTrack`
         """
+        # TODO: validate slice?
         return self._tl_tracks[start:end]
 
-    def mark_playing(self, tl_track):
-        """Private method used by :class:`mopidy.core.PlaybackController`."""
-        if self.random and tl_track in self._shuffled:
+    def _mark_playing(self, tl_track):
+        """Internal method for :class:`mopidy.core.PlaybackController`."""
+        if self.get_random() and tl_track in self._shuffled:
             self._shuffled.remove(tl_track)
 
-    def mark_unplayable(self, tl_track):
-        """Private method used by :class:`mopidy.core.PlaybackController`."""
+    def _mark_unplayable(self, tl_track):
+        """Internal method for :class:`mopidy.core.PlaybackController`."""
         logger.warning('Track is not playable: %s', tl_track.track.uri)
-        if self.random and tl_track in self._shuffled:
+        if self.get_consume() and tl_track is not None:
+            self.remove({'tlid': [tl_track.tlid]})
+        if self.get_random() and tl_track in self._shuffled:
             self._shuffled.remove(tl_track)
 
-    def mark_played(self, tl_track):
-        """Private method used by :class:`mopidy.core.PlaybackController`."""
-        if not self.consume:
-            return False
-        self.remove(tlid=[tl_track.tlid])
-        return True
+    def _mark_played(self, tl_track):
+        """Internal method for :class:`mopidy.core.PlaybackController`."""
+        if self.get_consume() and tl_track is not None:
+            self.remove({'tlid': [tl_track.tlid]})
+            return True
+        return False
 
     def _trigger_tracklist_changed(self):
-        if self.random:
-            self._shuffled = self.tl_tracks
+        if self.get_random():
+            self._shuffled = self._tl_tracks[:]
             random.shuffle(self._shuffled)
         else:
             self._shuffled = []

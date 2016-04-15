@@ -1,9 +1,10 @@
-from __future__ import unicode_literals
+from __future__ import absolute_import, unicode_literals
 
 from mopidy import listener
 
 
 class CoreListener(listener.Listener):
+
     """
     Marker interface for recipients of events sent by the core actor.
 
@@ -17,7 +18,7 @@ class CoreListener(listener.Listener):
     @staticmethod
     def send(event, **kwargs):
         """Helper to allow calling of core listener events"""
-        listener.send_async(CoreListener, event, **kwargs)
+        listener.send(CoreListener, event, **kwargs)
 
     def on_event(self, event, **kwargs):
         """
@@ -30,7 +31,8 @@ class CoreListener(listener.Listener):
         :type event: string
         :param kwargs: any other arguments to the specific event handlers
         """
-        getattr(self, event)(**kwargs)
+        # Just delegate to parent, entry mostly for docs.
+        super(CoreListener, self).on_event(event, **kwargs)
 
     def track_playback_paused(self, tl_track, time_position):
         """
@@ -122,6 +124,17 @@ class CoreListener(listener.Listener):
         """
         pass
 
+    def playlist_deleted(self, uri):
+        """
+        Called whenever a playlist is deleted.
+
+        *MAY* be implemented by actor.
+
+        :param uri: the URI of the deleted playlist
+        :type uri: string
+        """
+        pass
+
     def options_changed(self):
         """
         Called whenever an option is changed.
@@ -161,5 +174,16 @@ class CoreListener(listener.Listener):
 
         :param time_position: the position that was seeked to in milliseconds
         :type time_position: int
+        """
+        pass
+
+    def stream_title_changed(self, title):
+        """
+        Called whenever the currently playing stream title changes.
+
+        *MAY* be implemented by actor.
+
+        :param title: the new stream title
+        :type title: string
         """
         pass

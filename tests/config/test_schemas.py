@@ -1,4 +1,4 @@
-from __future__ import unicode_literals
+from __future__ import absolute_import, unicode_literals
 
 import logging
 import unittest
@@ -11,7 +11,8 @@ from tests import any_unicode
 
 
 class ConfigSchemaTest(unittest.TestCase):
-    def setUp(self):
+
+    def setUp(self):  # noqa: N802
         self.schema = schemas.ConfigSchema('test')
         self.schema['foo'] = mock.Mock()
         self.schema['bar'] = mock.Mock()
@@ -86,9 +87,10 @@ class ConfigSchemaTest(unittest.TestCase):
         self.assertNotIn('foo', errors)
 
 
-class LogLevelConfigSchemaTest(unittest.TestCase):
+class MapConfigSchemaTest(unittest.TestCase):
+
     def test_conversion(self):
-        schema = schemas.LogLevelConfigSchema('test')
+        schema = schemas.MapConfigSchema('test', types.LogLevel())
         result, errors = schema.deserialize(
             {'foo.bar': 'DEBUG', 'baz': 'INFO'})
 
@@ -97,7 +99,8 @@ class LogLevelConfigSchemaTest(unittest.TestCase):
 
 
 class DidYouMeanTest(unittest.TestCase):
-    def testSuggestoins(self):
+
+    def test_suggestions(self):
         choices = ('enabled', 'username', 'password', 'bitrate', 'timeout')
 
         suggestion = schemas._did_you_mean('bitrate', choices)

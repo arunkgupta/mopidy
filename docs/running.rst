@@ -13,6 +13,20 @@ When Mopidy says ``MPD server running at [127.0.0.1]:6600`` it's ready to
 accept connections by any MPD client. Check out our non-exhaustive
 :doc:`/clients/mpd` list to find recommended clients.
 
+Updating the library
+====================
+
+To update the library, e.g. after audio files have changed, run::
+
+    mopidy local scan
+
+Afterwards, to refresh the library (which is for now only available
+through the API) it is necessary to run::
+
+    curl -d '{"jsonrpc": "2.0", "id": 1, "method": "core.library.refresh"}' http://localhost:6680/mopidy/rpc
+
+This makes the changes in the library visible to the clients.
+
 
 Stopping Mopidy
 ===============
@@ -25,21 +39,8 @@ using ``pkill``::
     pkill mopidy
 
 
-Init scripts
-============
+Running as a service
+====================
 
-- The ``mopidy`` package at `apt.mopidy.com <http://apt.mopidy.com/>`__ comes
-  with an `sysvinit init script
-  <https://github.com/mopidy/mopidy/blob/debian/debian/mopidy.init>`_. For
-  more details, see the :ref:`debian` section of the docs.
-
-- The ``mopidy`` package in `Arch Linux AUR
-  <https://aur.archlinux.org/packages/mopidy>`__ comes with a systemd init
-  script.
-
-- A blog post by Benjamin Guillet explains how to `Daemonize Mopidy and Launch
-  It at Login on OS X
-  <http://www.benjaminguillet.com/blog/2013/08/16/launch-mopidy-at-login-on-os-x/>`_.
-
-- Issue :issue:`266` contains a bunch of init scripts for Mopidy, including
-  Upstart init scripts.
+Once you're done exploring Mopidy and want to run it as a proper service, check
+out :ref:`service`.
